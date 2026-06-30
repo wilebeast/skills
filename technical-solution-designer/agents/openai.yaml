@@ -1,0 +1,7 @@
+interface:
+  display_name: "Technical Solution Designer"
+  short_description: "Engineering-grade方案 from PRDs"
+  default_prompt: "Use $technical-solution-designer to turn this PRD and existing system behavior into an engineering-grade technical方案."
+
+policy:
+  allow_implicit_invocation: true
