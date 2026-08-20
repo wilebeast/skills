@@ -94,9 +94,54 @@ Create implementation-ready technical方案 from product intent and existing sys
    - Include user interaction flow, business implementation flow, code/service sequence flow, database update order, and ER diagram when data changes are involved.
    - Diagrams should show decisions, ownership boundaries, and failure branches, not only happy paths.
 
-11. **Close with non-functional requirements and open questions**
+11. **Build an executable implementation roadmap**
+    - Add a roadmap for multi-module, cross-service, stateful, migration-sensitive, or rollout-sensitive work. A trivial isolated change may use only a short implementation checklist.
+    - Derive stages from dependency order and risk boundaries, not from document chapter order. When changing a legacy system, begin by freezing critical existing behavior and contracts; then sequence data/config guardrails, pure domain rules, orchestration and persistence, settlement or external effects, query/UI work, and release operations as applicable. Adapt this progression to the actual design instead of copying it mechanically.
+    - Give every stage a stable ID such as `S0`, `S1`, and define its goal, prerequisites, exact scope, explicit exclusions, use-case/test matrix, rollout or feature-flag boundary, recovery approach, and completion gate.
+    - Include a dependency graph and a summary table showing dependencies, complexity or risk, independent deployability, and completion criteria. Identify stages that can safely proceed in parallel.
+    - Define atomic commit boundaries, including what must not be mixed into each commit. Use the stage ID in commit/PR tracking and, when the repository has no conflicting convention, in commit messages such as `[S4]`.
+    - Define verification gates for each stage: new tests, affected-package tests, legacy baseline regression, diff hygiene, and applicable race, static, migration, code-generation, contract, reconciliation, performance, or end-to-end checks.
+    - If implementation is in progress, keep one canonical progress table and a current execution entry in the design. Mark a stage complete only after its completion gate and requested delivery actions actually pass.
+
+12. **Close with non-functional requirements and open questions**
     - Cover idempotency, audit, observability, notifications, permissions, rollout, migration/backfill, failure handling, and metrics.
     - Keep open questions concrete and implementation-blocking; mark resolved decisions as such.
+
+## Implementation Roadmap
+
+Treat the roadmap as the execution contract that connects the approved design to implementation. It must preserve dependency and rollout safety while giving each stage a reviewable, testable boundary.
+
+Start with a dependency graph, then provide a summary table:
+
+| Step | Outcome / module | Depends on | Risk / complexity | Independently deployable | Completion gate |
+| --- | --- | --- | --- | --- | --- |
+| S0 | Existing-behavior baseline and contract freeze, when needed | None | ... | N/A | Named regression suite passes |
+| S1 | First implementation unit derived from the design | S0 | ... | Yes, protected by flag | Named evidence passes |
+
+For every stage, state:
+
+- **Goal and output**: the business or technical fact that will exist after this stage.
+- **Implementation touchpoints**: expected services, modules, APIs, tables, jobs, configuration, or generated artifacts. Name exact files/functions when repository evidence supports it; otherwise mark the location as provisional.
+- **Use cases and variations**: a compact table of normal, boundary, failure, retry, concurrency, migration, and compatibility cases relevant to the stage.
+- **Scope boundary**: what is intentionally deferred to later stages. Do not allow a convenient implementation shortcut to silently pull future-stage behavior into the current one.
+- **Rollout and recovery**: whether the stage can deploy without changing behavior, which flag or entry point protects it, and how partial writes or external effects are repaired or replayed.
+- **Completion gate**: observable tests and checks that prove the stage is done. “Code written” is not a completion gate.
+
+Add commit boundaries for non-trivial roadmaps:
+
+| Commit / stage | Must include | Must not include |
+| --- | --- | --- |
+| C01 / S1 | One independently compiling implementation unit and its tests/generated outputs | Unrelated domains or behavior from later stages |
+
+Keep source definitions and their generated outputs in the same commit. A documentation-only commit does not count as delivery of an implementation stage. Split a large stage into multiple atomic commits only within the same declared scope, and record every implementing commit or PR.
+
+When implementation has started, maintain:
+
+| Step | Status | Commit / PR | Verification evidence | Blockers |
+| --- | --- | --- | --- | --- |
+| S0 | Not started / In progress / Blocked / Completed | ... | Exact commands, suites, checks, or reconciliation result | ... |
+
+Follow the progress table with a **current execution entry** that names the next stage, its fixed scope, its exclusions, and the downstream stages it enables. Update it whenever a gate passes or scope changes; revise the roadmap before implementing a cross-stage change. Do not create a second progress document that can drift from the design.
 
 ## Output Shape
 
@@ -113,7 +158,8 @@ Use this structure unless the user asks for a different format:
    - Provider/external adapter reuse.
    - Database schema, ER diagram, indexes, and update-order flow.
 6. Non-functional requirements: idempotency, concurrency, audit logs, monitoring, notifications, migration, rollout, risks.
-7. Implementation checklist and open questions.
+7. Implementation roadmap: dependency graph, staged scope and gates, commit boundaries, progress table, and current execution entry.
+8. Implementation checklist and open questions.
 
 ## Design Principles To Preserve
 
@@ -131,6 +177,10 @@ Use this structure unless the user asks for a different format:
 - Make executor/actor identity explicit when automatic execution reuses APIs that normally require a user.
 - Avoid unbounded JSON metadata. Define action-specific recommended keys.
 - State what is intentionally out of scope for the current phase.
+- Order implementation stages by actual dependency and operational risk, with baseline protection before legacy behavior changes and guardrails before irreversible effects when applicable.
+- Make every roadmap stage independently reviewable and verifiable; prefer deployable, feature-flagged increments over a final all-at-once integration.
+- Keep future-stage behavior out of earlier commits, and update the roadmap before crossing a declared stage boundary.
+- Do not invent calendar dates, person-day estimates, or staffing promises unless the user explicitly asks for them.
 
 ## Review Checklist
 
@@ -153,3 +203,7 @@ Before finalizing a方案, verify:
 - Idempotency and duplicate active request protection are explicit.
 - Audit logs and metadata fields support future debugging without storing sensitive data.
 - Diagrams are complete enough for another engineer to implement from them.
+- The roadmap dependency graph and stage order agree with the design's data, state, service, and rollout dependencies.
+- Every roadmap stage names its exact scope, exclusions, rollout protection, recovery behavior, use-case checks, and objective completion gate.
+- Commit boundaries identify what must not be mixed, and generated artifacts stay with their source changes.
+- Progress status is backed by real commit/PR and verification evidence; the current execution entry is not stale or broader than the next approved stage.
