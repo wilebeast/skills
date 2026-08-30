@@ -1,6 +1,8 @@
 ---
 name: technical-solution-designer
 description: Use when Codex needs to produce or review an engineering-grade technical solution design from a PRD, product discussion, existing codebase, browser behavior, database records, or legacy implementation. Trigger for architecture/design docs, backend方案, approval/workflow/payment/card/fund lifecycle designs, service boundary analysis, state machines, permissions/RBAC, database schema, API contracts, sequence diagrams, migration plans, non-functional requirements, or when a user asks to “参考现有系统设计新流程”.
+metadata:
+  repository: https://github.com/wilebeast/skills
 ---
 
 # Technical Solution Designer
@@ -19,7 +21,7 @@ Create implementation-ready technical方案 from product intent and existing sys
 
 2. **Map existing capabilities first**
    - Identify what already exists: business interfaces, internal services, providers/adapters, workflow engines, RBAC helpers, tables, logs, async jobs, notifications, and error codes.
-   - Draw current business flow, interaction flow, and code/data flow before designing the new one.
+   - Map the current business, interaction, and code/data behavior before designing the new one. Draw only the views needed to expose a relevant lifecycle, ownership boundary, or behavior difference.
    - Treat existing products' real business use cases as design inputs, not merely as code to reuse. For each comparable product, identify its actor, outcome, preconditions, normal and exceptional paths, state meaning, funds/limit effects, user-visible result, and operational recovery path. Use this baseline together with the new PRD before deriving any shared abstraction.
    - Reuse existing service boundaries and helper APIs unless they are demonstrably wrong for the new feature.
 
@@ -43,7 +45,13 @@ Create implementation-ready technical方案 from product intent and existing sys
      | Provider Adapter | How does this vendor implement that ability? | API mapping, DTO conversion, auth, error and webhook normalization |
 
    - A useful derivation chain is: `business goal -> paths and variations -> facts/invariants/state machine -> orchestration steps -> shared application use cases -> channel capability contract -> provider API mapping -> data/events/jobs`.
-   - Add a cross-product expansion matrix whenever the scope contains, or is expected to contain, multiple card products:
+   - Before expanding the design into modules, freeze every in-scope use case with an implementation contract. The contract must name the authoritative inputs, outputs, persisted facts, side effects, invariants, owning layer/module, transaction and idempotency boundary, key data models, and key API/function signatures. It must also state explicit exclusions so implementation does not absorb adjacent behavior by convenience.
+   - Align adjacent-layer use-case contracts so the upstream use case's output is, whenever semantics permit, the downstream use case's input. Prefer directly passing the same command, fact, or result model over creating layer-named copies with field-for-field conversion.
+   - Add a model conversion only when the boundary changes meaning or trust: for example external protocol normalization, API exposure/security filtering, persistence representation, version compatibility, or a real aggregation/projection. Name the reason, owner, and field mapping; a layer boundary by itself is not sufficient justification.
+   - Model only data that crosses a boundary, is persisted, or enforces an invariant. Do not introduce DTOs, interfaces, wrapper structs, or helper functions merely to make every layer look symmetrical.
+   - When repository evidence exists, use the actual API and language-level function signatures. Otherwise mark a signature or owner as provisional and name the unresolved decision; do not make a speculative interface look approved.
+   - Maintain per-use-case traceability: `use case -> owner -> input model -> API/function -> persisted/output fact -> side effects -> tests`.
+   - Add a cross-product expansion matrix when the current scope contains multiple products, or when an explicitly confirmed near-term use case requires the same abstraction. Do not add it for hypothetical reuse:
 
      | Layer | Common business semantic | Product-independent model | Explicit variation point | Product-specific implementation evidence |
      | --- | --- | --- | --- | --- |
@@ -90,9 +98,12 @@ Create implementation-ready technical方案 from product intent and existing sys
    - State which terminal state makes repeated execution idempotently successful.
    - Include retry and compensation behavior for provider or balance failures.
 
-10. **Produce diagrams that connect layers**
-   - Include user interaction flow, business implementation flow, code/service sequence flow, database update order, and ER diagram when data changes are involved.
-   - Diagrams should show decisions, ownership boundaries, and failure branches, not only happy paths.
+10. **Use diagrams in proportion to use-case complexity**
+   - A simple use case needs only its implementation contract and a short ordered flow; do not draw a diagram that merely repeats the prose.
+   - A moderately complex use case should normally have one activity/flow diagram showing meaningful decisions, ownership, and failure exits.
+   - A complex stateful, concurrent, transactional, or external-system use case may add a state diagram and/or sequence/transaction diagram only when each explains a different concern.
+   - Add an ER diagram only when relationships or ownership change. Add a database update-order diagram only for multi-write, concurrency-sensitive, or transaction-sensitive behavior.
+   - Map important diagram nodes to the concrete model, API, function, event, job, or persistence operation defined by the use-case contract.
 
 11. **Build an executable implementation roadmap**
     - Add a roadmap for multi-module, cross-service, stateful, migration-sensitive, or rollout-sensitive work. A trivial isolated change may use only a short implementation checklist.
@@ -106,6 +117,43 @@ Create implementation-ready technical方案 from product intent and existing sys
 12. **Close with non-functional requirements and open questions**
     - Cover idempotency, audit, observability, notifications, permissions, rollout, migration/backfill, failure handling, and metrics.
     - Keep open questions concrete and implementation-blocking; mark resolved decisions as such.
+
+## Use-Case Implementation Contract
+
+Define the implementation boundary before designing shared layers. Use a compact block like this for every material use case; omit rows that genuinely do not apply rather than filling them with speculative detail.
+
+| Contract item | Required content |
+| --- | --- |
+| Use case | Stable ID/name, actor, trigger, desired outcome, preconditions |
+| Inputs | Authoritative facts and source; key request/command model |
+| Outputs | User-visible result, returned model, persisted fact, emitted event |
+| Rules | Invariants, eligibility, money/limit/state semantics |
+| Owner | Exact service/module and the layer responsible for orchestration |
+| Entry and key calls | API plus key function signatures; use real signatures when known |
+| Layer handoff | Upstream output and downstream input; identify the directly shared model or justify and map any conversion |
+| Side effects | Database, ledger/fund, provider, notification, outbox/job effects |
+| Safety boundary | Transaction, lock, idempotency, retry, compensation, terminal behavior |
+| Exclusions | Behavior intentionally not handled by this use case |
+| Verification | Normal, boundary, failure, retry, concurrency, and compatibility checks that apply |
+
+The contract is an implementation constraint, not a second requirements document. Keep it small enough that a reviewer can see the whole use case, but precise enough that an implementer does not have to guess where a fact is read, transformed, written, or exposed.
+
+## Minimum Sufficient Design Gate
+
+Use detail to eliminate implementation ambiguity, not to maximize the number of layers or artifacts.
+
+- Introduce a shared abstraction only when at least two concrete use cases share the same business meaning and change boundary, a confirmed variation point needs isolation, or a transaction/testing/provider boundary requires it.
+- Prefer a direct concrete function when there is one caller, one behavior, and no independent lifecycle or variation. Do not wrap a few obvious lines if the wrapper hides necessary context.
+- A proposed interface, model, service, strategy, or helper must name the use cases it serves, the variation or risk it isolates, and why the simpler alternative is insufficient.
+- Do not create equivalent request/result models at every layer. Default to semantic continuity across adjacent use cases; treat each conversion function or mapper as an abstraction that must pass this gate.
+- Do not design for hypothetical reuse. Record likely future work as an extension point or open question until a confirmed use case requires it.
+- Stop decomposing when the use-case contract and selected flow let another engineer implement and test the behavior without guessing. Any additional layer or diagram must resolve a named ambiguity, risk, ownership boundary, or independent change axis.
+
+For a design with substantial new abstractions, include this short decision table:
+
+| Proposed abstraction | Concrete use cases served | Variation/risk isolated | Simpler alternative | Decision |
+| --- | --- | --- | --- | --- |
+| ... | ... | ... | ... | Keep / simplify / defer |
 
 ## Implementation Roadmap
 
@@ -145,21 +193,23 @@ Follow the progress table with a **current execution entry** that names the next
 
 ## Output Shape
 
-Use this structure unless the user asks for a different format:
+Scale the document to the task. Do not force every section, matrix, or diagram into a small isolated change. Use this as the full shape for a substantial design; omit irrelevant sections and say why when the omission could surprise a reviewer:
 
 1. PRD analysis: background, actors, confirmed semantics, unresolved points.
-2. Use-case derivation: business use cases and variations; cross-product expansion matrix; application-orchestration use cases; channel capability contracts; provider API mapping.
+2. Use-case derivation and contracts: business use cases and variations; one implementation contract per material use case; cross-product expansion only when multiple products are actually in scope; application-orchestration use cases; capability contracts and provider mapping when external channels are involved.
 3. Existing system analysis: current flows, service boundaries, tables, permissions, reusable code.
-4. Overall solution: ownership by service, lifecycle, state mapping, permissions, and diagrams.
+4. Overall solution: ownership by service, lifecycle, state mapping, permissions, and only the diagrams justified by use-case complexity.
 5. Module designs:
    - Business APIs and DTOs.
    - Permission/RBAC design.
    - Workflow design and callback behavior.
    - Provider/external adapter reuse.
-   - Database schema, ER diagram, indexes, and update-order flow.
+   - Database schema and indexes; ER or update-order diagrams only when the relationship or write boundary warrants them.
 6. Non-functional requirements: idempotency, concurrency, audit logs, monitoring, notifications, migration, rollout, risks.
 7. Implementation roadmap: dependency graph, staged scope and gates, commit boundaries, progress table, and current execution entry.
 8. Implementation checklist and open questions.
+
+Organize detailed design around the use-case contracts first. Extract shared module or layer sections only after those contracts demonstrate actual commonality. For a small change, a use-case contract, short flow, touchpoint list, verification plan, and open questions may be the entire deliverable.
 
 ## Design Principles To Preserve
 
@@ -167,6 +217,9 @@ Use this structure unless the user asks for a different format:
 - Let business use cases and their failure/concurrency variants drive layer boundaries; do not start from provider HTTP endpoints or a preferred abstraction.
 - Keep business use cases, application-orchestration use cases, channel capability contracts, and provider API mappings distinct. A provider API is evidence for an Adapter, not automatically a business or shared application interface.
 - Generalize only on demonstrated common semantics or a confirmed variation point; preserve product-specific behavior when its rules, states, funds, or ownership differ.
+- Use key models and concrete API/function signatures to bound each use case before adding shared layers. Keep local implementation detail inside the owning function unless it crosses a boundary or carries an invariant.
+- Preserve model continuity between adjacent layers: an upper-level use case's output should normally be the lower-level use case's input. Convert only at a documented semantic, trust, protocol, persistence, aggregation, or compatibility boundary.
+- Prefer the minimum sufficient design: every abstraction and diagram must resolve a named use case, variation, ambiguity, ownership boundary, or risk.
 - For equivalent cross-product use cases, preserve one layered model end-to-end. Product variation must be visible as an explicit capability, policy, strategy, configuration, or Adapter mapping—not as a parallel product-specific service, state machine, event model, or core table.
 - Perform the horizontal comparison before adding a product-specific abstraction. If a proposed difference reaches more than one layer, either collapse it into a declared variation point or prove it is a distinct business semantic and name it as a separate use case.
 - Keep workflow generic; keep product state and product execution in the product service.
@@ -189,6 +242,10 @@ Before finalizing a方案, verify:
 - The PRD semantics are reflected and contradictions are called out.
 - Existing comparable products' actual business use cases—not only their APIs, tables, or implementation code—have been enumerated as inputs to the new design.
 - Each proposed module/interface/table can be traced back to a named business use case, variation, invariant, or confirmed provider capability.
+- Every material use case has an implementation contract naming its inputs, outputs, owner, key models, API/function signatures, persisted facts, side effects, safety boundary, exclusions, and verification checks.
+- Key models are limited to boundary-crossing, persisted, or invariant-bearing data; speculative DTOs, wrappers, and interfaces have not been introduced for symmetry or hypothetical reuse.
+- Adjacent-layer contracts show an output-to-input handoff. Equivalent models are passed through directly; every remaining conversion names the semantic boundary, owner, and mapping that require it.
+- Every shared abstraction passes the minimum sufficient design gate and names the concrete use cases or risk it serves.
 - Business, application-orchestration, channel capability, and provider Adapter use cases are separated; no provider URI has been promoted directly into a business abstraction without a business-semantic reason.
 - Equivalent use cases have been compared horizontally across current and planned card products at business, application, capability, Adapter, state/event, data, retry, and observability layers.
 - The design uses one layered model for equivalent product semantics; every product difference is explicitly classified as a policy/configuration, capability, strategy, or Adapter variation. Any intentionally separate model is justified by a documented semantic difference.
@@ -202,7 +259,8 @@ Before finalizing a方案, verify:
 - Data update order is clear for submit, approval, auto approval, execution success, execution failure, rejection, cancellation, and expiration.
 - Idempotency and duplicate active request protection are explicit.
 - Audit logs and metadata fields support future debugging without storing sensitive data.
-- Diagrams are complete enough for another engineer to implement from them.
+- Diagram choice is proportional to use-case complexity, diagrams do not duplicate prose or each other, and important nodes map back to concrete contracts and code/data touchpoints.
+- The design stops decomposing once another engineer can implement and test each use case without guessing; additional layers resolve a named risk or variation.
 - The roadmap dependency graph and stage order agree with the design's data, state, service, and rollout dependencies.
 - Every roadmap stage names its exact scope, exclusions, rollout protection, recovery behavior, use-case checks, and objective completion gate.
 - Commit boundaries identify what must not be mixed, and generated artifacts stay with their source changes.
