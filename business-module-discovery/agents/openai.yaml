@@ -1,0 +1,4 @@
+interface:
+  display_name: "业务模块划分"
+  short_description: "从业务闭环和结果归属出发，厘清模块边界与交互，再进入技术设计"
+  default_prompt: "使用 $business-module-discovery，从业务目标和完整流程出发划分候选模块，明确职责边界，并用关键场景验证后再进入详细技术设计。"
